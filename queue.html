@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Applications — TGM AppHub{% endblock %}
+{% block page_title %}{{ 'All Applications' if current_user.role == 'Admin' else 'My Queue' }}{% endblock %}
+{% block page_sub %}{{ apps|length }} application(s) shown{% endblock %}
+
+{% block content %}
+<!-- Filters -->
+<form method="GET" class="filter-bar">
+  <div class="form-group">
+    <label class="form-label">Status</label>
+    <select name="status" class="form-control" onchange="this.form.submit()">
+      <option value="All" {% if f_status=='All' %}selected{% endif %}>All Statuses</option>
+      {% for s in statuses %}<option value="{{ s }}" {% if f_status==s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Counsellor</label>
+    <select name="counsellor" class="form-control" onchange="this.form.submit()">
+      <option value="All" {% if f_couns=='All' %}selected{% endif %}>All Counsellors</option>
+      {% for c in counsellors %}<option value="{{ c }}" {% if f_couns==c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Search Student</label>
+    <input type="text" name="search" class="form-control" placeholder="Type name..." value="{{ f_search }}">
+  </div>
+  <button type="submit" class="btn btn-primary btn-sm" style="margin-bottom:0;">Search</button>
+  <a href="{{ url_for('queue') }}" class="btn btn-outline btn-sm" style="margin-bottom:0;">Clear</a>
+</form>
+
+{% if apps %}
+{% for app in apps %}
+{% set schools = parse_schools(clean(app.get('schools',''))) %}
+{% set doc_list = clean(app.get('documents','')).split('|') | reject('eq','') | list %}
+{% set status = clean(app.get('status','Not Checked')) %}
+<div class="app-row">
+  <div class="app-row-header" onclick="toggleRow(this)">
+    <div>
+      <div class="app-row-title">{{ clean(app.student_name) }}</div>
+      <div class="app-row-sub">
+        {% if schools %}{{ schools[0].university }}{% if schools|length > 1 %} +{{ schools|length - 1 }} more{% endif %}{% endif %}
+        &nbsp;·&nbsp; {{ clean(app.get('counsellor_name','')) }}
+        &nbsp;·&nbsp; {{ clean(app.get('submitted_at','')) }}
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:0.75rem;">
+      <span class="badge badge-{{ status|lower|replace(' ','-') }}">{{ status }}</span>
+      <span style="color:var(--grey-400);font-size:0.8rem;">▼</span>
+    </div>
+  </div>
+  <div class="app-row-body">
+    <div class="app-detail-grid">
+      <div><div class="app-detail-label">Student</div><div class="app-detail-value">{{ clean(app.student_name) }}</div></div>
+      <div><div class="app-detail-label">Email</div><div class="app-detail-value">{{ clean(app.get('student_email','—')) }}</div></div>
+      <div><div class="app-detail-label">Phone</div><div class="app-detail-value">{{ clean(app.get('student_phone','—')) }}</div></div>
+      <div><div class="app-detail-label">Counsellor</div><div class="app-detail-value">{{ clean(app.get('counsellor_name','—')) }}</div></div>
+      <div><div class="app-detail-label">C. Email</div><div class="app-detail-value">{{ clean(app.get('counsellor_email','—')) }}</div></div>
+      <div><div class="app-detail-label">C. Phone</div><div class="app-detail-value">{{ clean(app.get('counsellor_phone','—')) }}</div></div>
+      <div><div class="app-detail-label">App ID</div><div class="app-detail-value">{{ clean(app.app_id) }}</div></div>
+      <div><div class="app-detail-label">Assigned Officer</div><div class="app-detail-value">{{ clean(app.get('assigned_officer','—')) }}</div></div>
+      <div><div class="app-detail-label">Submitted</div><div class="app-detail-value">{{ clean(app.get('submitted_at','—')) }}</div></div>
+    </div>
+
+    {% if schools %}
+    <div style="margin-bottom:1rem;">
+      <div class="app-detail-label" style="margin-bottom:0.4rem;">Schools</div>
+      {% for s in schools %}
+      <div style="font-size:0.855rem;padding:0.4rem 0;border-bottom:1px solid var(--grey-100);">
+        <strong>{{ loop.index }}.</strong> {{ s.university }} — {{ s.course }} ({{ s.intake }})
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if clean(app.get('notes','')) %}
+    <div class="alert alert-info" style="margin-bottom:0.8rem;">Counsellor Notes: {{ clean(app.notes) }}</div>
+    {% endif %}
+    {% if clean(app.get('officer_notes','')) %}
+    <div class="alert alert-info" style="margin-bottom:0.8rem;">Officer Note: {{ clean(app.officer_notes) }}</div>
+    {% endif %}
+
+    <!-- Update status -->
+    <form method="POST" action="{{ url_for('update_status') }}" style="margin-bottom:0.8rem;">
+      <input type="hidden" name="app_id" value="{{ clean(app.app_id) }}">
+      <div class="form-row">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Update Status</label>
+          <select name="status" class="form-control">
+            {% for s in statuses %}<option value="{{ s }}" {% if status==s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Note to Counsellor</label>
+          <input type="text" name="notes" class="form-control" placeholder="Optional note..." value="{{ clean(app.get('officer_notes','')) }}">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button type="submit" class="btn btn-primary btn-sm">Save Status</button>
+        </div>
+      </div>
+    </form>
+
+    <!-- Documents -->
+    {% if doc_list %}
+    <div>
+      <div class="app-detail-label" style="margin-bottom:0.4rem;">Documents ({{ doc_list|length }})</div>
+      {% for doc in doc_list %}
+      {% set url = get_file_url(clean(app.app_id), doc) %}
+      {% if url %}
+      <a href="{{ url }}" target="_blank" class="btn btn-outline btn-sm" style="margin-right:0.4rem;margin-bottom:0.4rem;">Download — {{ doc }}</a>
+      {% else %}
+      <span style="font-size:0.8rem;color:var(--grey-400);">{{ doc }}</span>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="empty-state">
+  <div class="empty-state-icon">📋</div>
+  <div class="empty-state-text">No applications found.</div>
+</div>
+{% endif %}
+{% endblock %}

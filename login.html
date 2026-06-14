@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Sign In — TGM AppHub{% endblock %}
+{% block auth_content %}
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-icon">T</div>
+      <span class="auth-logo-text">TGM AppHub</span>
+    </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ 'success' if category=='success' else 'error' }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+    <div class="auth-tabs">
+      <a href="{{ url_for('login') }}" class="auth-tab active">Sign In</a>
+      <a href="{{ url_for('register') }}" class="auth-tab">Create Account</a>
+    </div>
+    <form method="POST">
+      <div class="form-group">
+        <label class="form-label">Email Address</label>
+        <input type="email" name="email" class="form-control" placeholder="your@email.com" required autofocus>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input type="password" name="password" class="form-control" placeholder="Your password" required>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:0.6rem;">Sign In</button>
+    </form>
+    <div class="auth-footer" style="margin-top:1.2rem;">
+      Forgot your password? Contact your Admin to reset it.
+    </div>
+    <div class="auth-footer">
+      Don't have an account? <a href="{{ url_for('register') }}" style="color:var(--purple);font-weight:600;">Create one</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
