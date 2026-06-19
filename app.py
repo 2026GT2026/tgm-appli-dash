@@ -9,6 +9,9 @@ import io
 load_dotenv()
 import db
 
+# Ensure all Postgres tables exist before the first request is served.
+db.init_db()
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "tgm-apphub-secret-2026")
 
