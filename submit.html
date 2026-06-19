@@ -1,84 +1,74 @@
 {% extends "base.html" %}
-{% block title %}Submit Application — TGM AppHub{% endblock %}
-{% block page_title %}Submit New Application{% endblock %}
-{% block page_sub %}Fill in student details, add schools and upload documents{% endblock %}
+{% block title %}Edit Application — TGM AppHub{% endblock %}
+{% block page_title %}Edit Application{% endblock %}
+{% block page_sub %}App ID: {{ app.app_id }}{% endblock %}
 
 {% block content %}
-<form method="POST" enctype="multipart/form-data" id="submit-form">
+<div class="alert alert-info">You are editing application {{ app.app_id }}. Changes will be saved immediately.</div>
+<form method="POST" enctype="multipart/form-data">
   <div class="card">
     <div class="card-header"><span class="card-title">Student Information</span></div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Student Full Name *</label><input type="text" name="student_name" class="form-control" value="{{ form.get('student_name','') }}" placeholder="e.g. Amina Bello" required></div>
-      <div class="form-group"><label class="form-label">Student Email</label><input type="email" name="student_email" class="form-control" value="{{ form.get('student_email','') }}" placeholder="student@email.com"></div>
+      <div class="form-group"><label class="form-label">Student Full Name *</label><input type="text" name="student_name" class="form-control" value="{{ app.student_name }}" required></div>
+      <div class="form-group"><label class="form-label">Student Email</label><input type="email" name="student_email" class="form-control" value="{{ app.get('student_email','') }}"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Student Phone</label><input type="text" name="student_phone" class="form-control" value="{{ form.get('student_phone','') }}" placeholder="+234..."></div>
+      <div class="form-group"><label class="form-label">Student Phone</label><input type="text" name="student_phone" class="form-control" value="{{ app.get('student_phone','') }}"></div>
       <div></div>
     </div>
   </div>
-
   <div class="card">
     <div class="card-header">
       <span class="card-title">Counsellor Information</span>
       <span style="font-size:0.75rem;color:var(--grey-400);">Auto-filled from your account</span>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Your Full Name</label><input type="text" name="counsellor_name" class="form-control" value="{{ current_user.name }}" readonly></div>
-      <div class="form-group"><label class="form-label">Your Email</label><input type="email" name="counsellor_email" class="form-control" value="{{ current_user.get('email','') }}" readonly></div>
+      <div class="form-group"><label class="form-label">Your Full Name</label><input type="text" name="counsellor_name" class="form-control" value="{{ app.get('counsellor_name','') }}" readonly></div>
+      <div class="form-group"><label class="form-label">Your Email</label><input type="email" name="counsellor_email" class="form-control" value="{{ app.get('counsellor_email','') }}" readonly></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Your Phone *</label><input type="text" name="counsellor_phone" class="form-control" value="{{ form.get('counsellor_phone', counsellor_phone) }}" placeholder="+234..." required></div>
+      <div class="form-group"><label class="form-label">Your Phone *</label><input type="text" name="counsellor_phone" class="form-control" value="{{ app.get('counsellor_phone','') }}" required></div>
       <div></div>
     </div>
   </div>
-
-  <div class="card" id="schools-card">
-    <div class="card-header">
-      <span class="card-title">Schools Applied To</span>
-      <span style="font-size:0.78rem;color:var(--grey-400);">Up to 10 schools</span>
-    </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Schools</span></div>
     <input type="hidden" name="num_schools" id="num_schools" value="{{ num_schools }}">
     <div id="schools-container">
-      {% for i in range(1, num_schools + 1) %}
-      <div class="school-block" id="school-{{ i }}">
+      {% for s in schools %}
+      <div class="school-block" id="school-{{ loop.index }}">
         <div class="school-block-header">
-          <span class="school-number">School {{ i }}</span>
-          {% if i > 1 %}<button type="button" class="btn btn-danger btn-sm" onclick="removeSchool({{ i }})">Remove</button>{% endif %}
+          <span class="school-number">School {{ loop.index }}</span>
+          {% if loop.index > 1 %}<button type="button" class="btn btn-danger btn-sm" onclick="removeSchool({{ loop.index }})">Remove</button>{% endif %}
         </div>
         <div class="form-row-3">
           <div class="form-group">
             <label class="form-label">University</label>
             <div class="autocomplete-wrap">
-              <input type="text" name="uni_{{ i }}" id="uni_{{ i }}" class="form-control uni-input" placeholder="Search university..." autocomplete="off" value="{{ form.get('uni_' ~ i, '') }}">
-              <div class="autocomplete-list" id="ac_{{ i }}"></div>
+              <input type="text" name="uni_{{ loop.index }}" id="uni_{{ loop.index }}" class="form-control" value="{{ s.university }}" placeholder="Search university..." autocomplete="off">
+              <div class="autocomplete-list" id="ac_{{ loop.index }}"></div>
             </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Course / Programme</label>
-            <input type="text" name="course_{{ i }}" class="form-control" placeholder="e.g. MSc Data Science" value="{{ form.get('course_' ~ i, '') }}">
-          </div>
+          <div class="form-group"><label class="form-label">Course</label><input type="text" name="course_{{ loop.index }}" class="form-control" value="{{ s.course }}"></div>
           <div class="form-group">
             <label class="form-label">Intake</label>
             <div class="form-row">
-              <select name="month_{{ i }}" class="form-control">
-                {% for m in months %}<option value="{{ m }}" {% if form.get('month_' ~ i, 'January') == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+              <select name="month_{{ loop.index }}" class="form-control">
+                {% for m in months %}<option value="{{ m }}" {% if s.intake.startswith(m) %}selected{% endif %}>{{ m }}</option>{% endfor %}
               </select>
-              <input type="number" name="year_{{ i }}" class="form-control" min="1900" max="3000" value="{{ form.get('year_' ~ i, '2026') }}">
+              <input type="number" name="year_{{ loop.index }}" class="form-control" value="{{ s.intake.split(' ')[-1] if ' ' in s.intake else '2026' }}" min="1900" max="3000">
             </div>
           </div>
         </div>
       </div>
       {% endfor %}
     </div>
-    <div style="display:flex;gap:0.75rem;margin-top:0.5rem;">
-      <button type="button" class="btn btn-outline btn-sm" onclick="addSchool()" id="add-school-btn">+ Add Another School</button>
-    </div>
+    <button type="button" class="btn btn-outline btn-sm" onclick="addSchool()" id="add-school-btn">+ Add Another School</button>
   </div>
-
   <div class="card">
-    <div class="card-header"><span class="card-title">Documents</span></div>
+    <div class="card-header"><span class="card-title">Additional Documents</span></div>
     <div class="form-group">
-      <label class="form-label">Upload Documents (CV, Transcripts, IELTS, Passport...)</label>
+      <label class="form-label">Upload new documents (existing ones are kept)</label>
       <div id="docs-container">
         <div class="doc-row" id="doc-1" style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem;">
           <input type="file" name="documents" class="form-control" accept=".pdf,.docx,.doc,.jpg,.jpeg,.png">
@@ -86,97 +76,44 @@
       </div>
       <button type="button" class="btn btn-outline btn-sm" onclick="addDoc()" style="margin-top:0.25rem;">+ Add Another Document</button>
     </div>
-    <div class="form-group">
-      <label class="form-label">Additional Notes</label>
-      <textarea name="notes" class="form-control" placeholder="Any special notes for the applications team...">{{ form.get('notes','') }}</textarea>
-    </div>
+    <div class="form-group"><label class="form-label">Notes</label><textarea name="notes" class="form-control">{{ app.get('notes','') }}</textarea></div>
   </div>
-
   <div style="display:flex;gap:0.75rem;">
-    <button type="submit" class="btn btn-primary">Submit Application</button>
-    <a href="{{ url_for('dashboard') }}" class="btn btn-outline">Cancel</a>
+    <button type="submit" class="btn btn-primary">Save Changes</button>
+    <a href="{{ url_for('my_applications') }}" class="btn btn-outline">Cancel</a>
   </div>
 </form>
 {% endblock %}
-
 {% block scripts %}
 <script>
 const UNIVERSITIES = {{ universities | tojson }};
 let schoolCount = {{ num_schools }};
-
 function addSchool() {
   if (schoolCount >= 10) return;
   schoolCount++;
   document.getElementById('num_schools').value = schoolCount;
   const container = document.getElementById('schools-container');
   const div = document.createElement('div');
-  div.className = 'school-block';
-  div.id = 'school-' + schoolCount;
-  div.innerHTML = `
-    <div class="school-block-header">
-      <span class="school-number">School ${schoolCount}</span>
-      <button type="button" class="btn btn-danger btn-sm" onclick="removeSchool(${schoolCount})">Remove</button>
-    </div>
-    <div class="form-row-3">
-      <div class="form-group">
-        <label class="form-label">University</label>
-        <div class="autocomplete-wrap">
-          <input type="text" name="uni_${schoolCount}" id="uni_${schoolCount}" class="form-control uni-input" placeholder="Search university..." autocomplete="off">
-          <div class="autocomplete-list" id="ac_${schoolCount}"></div>
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Course / Programme</label>
-        <input type="text" name="course_${schoolCount}" class="form-control" placeholder="e.g. MSc Data Science">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Intake</label>
-        <div class="form-row">
-          <select name="month_${schoolCount}" class="form-control">
-            <option>January</option><option>May</option><option>September</option>
-          </select>
-          <input type="number" name="year_${schoolCount}" class="form-control" min="1900" max="3000" value="2026">
-        </div>
-      </div>
-    </div>`;
-  container.appendChild(div);
-  initAutocomplete(schoolCount);
-  if (schoolCount >= 10) document.getElementById('add-school-btn').style.display='none';
+  div.className = 'school-block'; div.id = 'school-' + schoolCount;
+  div.innerHTML = `<div class="school-block-header"><span class="school-number">School ${schoolCount}</span><button type="button" class="btn btn-danger btn-sm" onclick="removeSchool(${schoolCount})">Remove</button></div><div class="form-row-3"><div class="form-group"><label class="form-label">University</label><div class="autocomplete-wrap"><input type="text" name="uni_${schoolCount}" id="uni_${schoolCount}" class="form-control" placeholder="Search..." autocomplete="off"><div class="autocomplete-list" id="ac_${schoolCount}"></div></div></div><div class="form-group"><label class="form-label">Course</label><input type="text" name="course_${schoolCount}" class="form-control"></div><div class="form-group"><label class="form-label">Intake</label><div class="form-row"><select name="month_${schoolCount}" class="form-control"><option>January</option><option>May</option><option>September</option></select><input type="number" name="year_${schoolCount}" class="form-control" value="2026" min="1900" max="3000"></div></div></div>`;
+  container.appendChild(div); initAC(schoolCount);
 }
-
-function removeSchool(i) {
-  const el = document.getElementById('school-' + i);
-  if (el) el.remove();
-  schoolCount--;
-  document.getElementById('num_schools').value = schoolCount;
-  document.getElementById('add-school-btn').style.display='';
-}
-
-function initAutocomplete(i) {
-  const input = document.getElementById('uni_' + i);
-  const list  = document.getElementById('ac_' + i);
-  if (!input || !list) return;
-  input.addEventListener('input', function() {
+function removeSchool(i) { document.getElementById('school-'+i)?.remove(); schoolCount--; document.getElementById('num_schools').value = schoolCount; }
+function initAC(i) {
+  const inp = document.getElementById('uni_'+i), lst = document.getElementById('ac_'+i);
+  if (!inp||!lst) return;
+  inp.addEventListener('input', function() {
     const q = this.value.toLowerCase();
-    if (q.length < 2) { list.classList.remove('open'); return; }
-    const matches = UNIVERSITIES.filter(u => u.toLowerCase().includes(q)).slice(0,50);
-    list.innerHTML = matches.map(u => `<div class="autocomplete-item" onclick="selectUni(${i},'${u.replace(/'/g,"\\'")}')">` + u + '</div>').join('');
-    list.classList.toggle('open', matches.length > 0);
+    if (q.length < 2) { lst.classList.remove('open'); return; }
+    const m = UNIVERSITIES.filter(u=>u.toLowerCase().includes(q)).slice(0,50);
+    lst.innerHTML = m.map(u=>`<div class="autocomplete-item" onclick="selUni(${i},'${u.replace(/'/g,"\\'")}')">${u}</div>`).join('');
+    lst.classList.toggle('open', m.length>0);
   });
-  document.addEventListener('click', function(e) {
-    if (!input.contains(e.target) && !list.contains(e.target)) list.classList.remove('open');
-  });
+  document.addEventListener('click', e=>{ if(!inp.contains(e.target)&&!lst.contains(e.target)) lst.classList.remove('open'); });
 }
+function selUni(i,v) { document.getElementById('uni_'+i).value=v; document.getElementById('ac_'+i).classList.remove('open'); }
+for(let i=1;i<=schoolCount;i++) initAC(i);
 
-function selectUni(i, value) {
-  document.getElementById('uni_' + i).value = value;
-  document.getElementById('ac_' + i).classList.remove('open');
-}
-
-// Init all existing school inputs
-for (let i = 1; i <= schoolCount; i++) initAutocomplete(i);
-
-// Document upload rows
 let docCount = 1;
 function addDoc() {
   docCount++;
