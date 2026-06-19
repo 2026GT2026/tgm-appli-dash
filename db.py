@@ -1,12 +1,19 @@
-import os, json, hashlib, uuid
+import os, json, hashlib, uuid, logging, sys
 from datetime import datetime
 from functools import lru_cache
 from supabase import create_client
 
+logger = logging.getLogger(__name__)
+
 def get_sb():
     url = os.environ.get("SUPABASE_URL","https://kqpxvaizyticiffdnugs.supabase.co")
     key = os.environ.get("SUPABASE_KEY","eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxcHh2YWl6eXRpY2lmZmRudWdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1MDgxMjMsImV4cCI6MjA5NzA4NDEyM30.lrFHqhl6uQBbIBqrX7frdmQ0jIagBCCiQPmfiAJpiYY")
-    return create_client(url, key)
+    try:
+        return create_client(url, key)
+    except Exception as e:
+        logger.error("Failed to initialise Supabase client: %s", e, exc_info=True)
+        print(f"[db] FATAL: Supabase client init failed: {e}", file=sys.stderr, flush=True)
+        raise
 
 def load_universities():
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "universities.json")

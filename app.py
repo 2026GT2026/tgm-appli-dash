@@ -1,4 +1,4 @@
-import os, json, uuid
+import os, json, uuid, logging, sys
 from datetime import datetime
 from functools import wraps
 from flask import (Flask, render_template, request, redirect, url_for,
@@ -6,13 +6,27 @@ from flask import (Flask, render_template, request, redirect, url_for,
 from dotenv import load_dotenv
 import io
 
+logging.basicConfig(
+    stream=sys.stderr,
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
+
 load_dotenv()
-import db
+
+try:
+    import db
+    logger.info("db module imported successfully")
+except Exception as e:
+    logger.error("Failed to import db module: %s", e, exc_info=True)
+    print(f"[app] FATAL: could not import db: {e}", file=sys.stderr, flush=True)
+    db = None
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "tgm-apphub-secret-2026")
 
-UNIVERSITIES = db.load_universities()
+UNIVERSITIES = db.load_universities() if db is not None else []
 STATUSES     = ["Not Checked", "In Progress", "Submitted"]
 MONTHS       = ["January", "May", "September"]
 
@@ -69,6 +83,22 @@ def inject_globals():
         is_officer = user["role"] in ("Application Officer","Admin")
         unread = db.unread_count(user["name"], is_officer=is_officer)
     return {"current_user": user, "unread_count": unread, "statuses": STATUSES}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# HEALTH CHECK
+# ══════════════════════════════════════════════════════════════════════════════
+@app.route("/health")
+def health():
+    db_status = "ok"
+    if db is None:
+        db_status = "unavailable: db module failed to import"
+    else:
+        try:
+            db.get_sb()
+        except Exception as e:
+            db_status = f"unavailable: {e}"
+    status_code = 200 if db_status == "ok" else 503
+    return jsonify({"status": "ok", "db": db_status}), status_code
 
 # ══════════════════════════════════════════════════════════════════════════════
 # AUTH
