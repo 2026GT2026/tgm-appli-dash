@@ -1,0 +1,17 @@
+<!-- notifications.html -->
+{% extends "base.html" %}
+{% block title %}Notifications — TGM AppHub{% endblock %}
+{% block page_title %}Notifications{% endblock %}
+{% block page_sub %}{{ notifications|length }} notification(s){% endblock %}
+{% block content %}
+{% if notifications %}
+{% for n in notifications %}
+<div class="notif-item {% if not n.get('read') %}notif-unread{% endif %}">
+  <div class="notif-msg">{{ n.get('message','') }}</div>
+  <div class="notif-meta">{{ n.get('time','') }} &nbsp;·&nbsp; From: {{ n.get('sender','System') }} &nbsp;·&nbsp; App: {{ n.get('app_id','—') }}</div>
+</div>
+{% endfor %}
+{% else %}
+<div class="empty-state"><div class="empty-state-icon">🔔</div><div class="empty-state-text">No notifications yet.</div></div>
+{% endif %}
+{% endblock %}

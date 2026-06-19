@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}My Applications — TGM AppHub{% endblock %}
+{% block page_title %}My Applications{% endblock %}
+{% block page_sub %}All applications you have submitted{% endblock %}
+{% block topbar_actions %}
+  <a href="{{ url_for('submit') }}" class="btn btn-primary btn-sm">+ Submit Application</a>
+{% endblock %}
+{% block content %}
+{% if apps %}
+{% for app in apps %}
+{% set schools = app._schools %}
+{% set status = clean(app.get('status','Not Checked')) %}
+<div class="app-row">
+  <div class="app-row-header" onclick="toggleRow(this)">
+    <div>
+      <div class="app-row-title">{{ clean(app.student_name) }}</div>
+      <div class="app-row-sub">
+        {% if schools %}{{ schools[0].university }}{% if schools|length > 1 %} +{{ schools|length - 1 }} more{% endif %}{% endif %}
+        &nbsp;·&nbsp; {{ clean(app.get('submitted_at','')) }}
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:0.75rem;">
+      <span class="badge badge-{{ status|lower|replace(' ','-') }}">{{ status }}</span>
+      <span style="color:var(--grey-400);font-size:0.8rem;">▼</span>
+    </div>
+  </div>
+  <div class="app-row-body">
+    <div class="app-detail-grid">
+      <div><div class="app-detail-label">Student Email</div><div class="app-detail-value">{{ clean(app.get('student_email','—')) }}</div></div>
+      <div><div class="app-detail-label">Student Phone</div><div class="app-detail-value">{{ clean(app.get('student_phone','—')) }}</div></div>
+      <div><div class="app-detail-label">App ID</div><div class="app-detail-value">{{ clean(app.app_id) }}</div></div>
+    </div>
+    {% if schools %}
+    <div style="margin-bottom:0.8rem;">
+      <div class="app-detail-label" style="margin-bottom:0.4rem;">Schools</div>
+      {% for s in schools %}
+      <div style="font-size:0.855rem;padding:0.4rem 0;border-bottom:1px solid var(--grey-100);">
+        <strong>{{ loop.index }}.</strong> {{ s.university }} — {{ s.course }} ({{ s.intake }})
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if clean(app.get('officer_notes','')) %}
+    <div class="alert alert-info" style="margin-bottom:0.8rem;">Officer Note: {{ clean(app.officer_notes) }}</div>
+    {% endif %}
+    <a href="{{ url_for('edit_application', app_id=clean(app.app_id)) }}" class="btn btn-outline btn-sm">Edit Application</a>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="empty-state">
+  <div class="empty-state-icon">📋</div>
+  <div class="empty-state-text">No applications yet. <a href="{{ url_for('submit') }}" style="color:var(--purple);">Submit your first one.</a></div>
+</div>
+{% endif %}
+{% endblock %}

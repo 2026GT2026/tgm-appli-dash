@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Assignments — TGM AppHub{% endblock %}
+{% block page_title %}Manage Assignments{% endblock %}
+{% block page_sub %}View workload and reassign applications{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header"><span class="card-title">Officer Workload</span></div>
+  {% set max_total = workload|map(attribute='total')|max if workload else 1 %}
+  {% for w in workload %}
+  <div class="workload-row">
+    <div class="workload-name">{{ w.name }}</div>
+    <div style="flex:1;display:flex;gap:0.5rem;align-items:center;">
+      <div class="workload-bar-wrap">
+        <div class="workload-bar" style="width:{{ (w.total / (max_total or 1) * 100)|int }}%"></div>
+      </div>
+      <div style="display:flex;gap:0.4rem;flex-shrink:0;">
+        <span class="badge badge-not-checked">{{ w.not_checked }}</span>
+        <span class="badge badge-in-progress">{{ w.in_progress }}</span>
+        <span class="badge badge-submitted">{{ w.submitted }}</span>
+      </div>
+    </div>
+    <div class="workload-count">{{ w.total }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-header"><span class="card-title">Reassign Applications</span></div>
+  {% for app in apps %}
+  {% set schools = parse_schools(clean(app.get('schools',''))) %}
+  {% set status = clean(app.get('status','Not Checked')) %}
+  <div class="app-row" style="margin-bottom:0.5rem;">
+    <div class="app-row-header" onclick="toggleRow(this)">
+      <div>
+        <div class="app-row-title">{{ clean(app.student_name) }}</div>
+        <div class="app-row-sub">Assigned: {{ clean(app.get('assigned_officer','—')) }} &nbsp;·&nbsp; {{ clean(app.get('submitted_at','')) }}</div>
+      </div>
+      <span class="badge badge-{{ status|lower|replace(' ','-') }}">{{ status }}</span>
+    </div>
+    <div class="app-row-body">
+      {% if schools %}
+      {% for s in schools %}
+      <div style="font-size:0.855rem;padding:0.3rem 0;border-bottom:1px solid var(--grey-100);">{{ loop.index }}. {{ s.university }} — {{ s.course }} ({{ s.intake }})</div>
+      {% endfor %}
+      <div style="height:0.8rem;"></div>
+      {% endif %}
+      <form method="POST" action="{{ url_for('reassign') }}" style="display:flex;gap:0.75rem;align-items:flex-end;">
+        <input type="hidden" name="app_id" value="{{ clean(app.app_id) }}">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Reassign to Officer</label>
+          <select name="officer" class="form-control">
+            {% for o in officers %}<option value="{{ o }}" {% if o==clean(app.get('assigned_officer','')) %}selected{% endif %}>{{ o }}</option>{% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Reassign</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
