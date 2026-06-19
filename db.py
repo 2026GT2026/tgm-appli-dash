@@ -1,12 +1,74 @@
 import os, json, hashlib, uuid
+from contextlib import contextmanager
 from datetime import datetime
-from functools import lru_cache
-from supabase import create_client
+import psycopg2
+import psycopg2.extras
 
-def get_sb():
-    url = os.environ.get("SUPABASE_URL","https://kqpxvaizyticiffdnugs.supabase.co")
-    key = os.environ.get("SUPABASE_KEY","eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxcHh2YWl6eXRpY2lmZmRudWdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1MDgxMjMsImV4cCI6MjA5NzA4NDEyM30.lrFHqhl6uQBbIBqrX7frdmQ0jIagBCCiQPmfiAJpiYY")
-    return create_client(url, key)
+# ── Connection ─────────────────────────────────────────────────────────────────
+def _get_conn():
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        raise RuntimeError("DATABASE_URL environment variable is not set.")
+    return psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
+
+@contextmanager
+def _db():
+    """Yield a (conn, cursor) pair and commit/rollback automatically."""
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        yield conn, cur
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+# ── Schema bootstrap ───────────────────────────────────────────────────────────
+def init_db():
+    """Create tables if they don't exist. Call once at startup."""
+    with _db() as (conn, cur):
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id       SERIAL PRIMARY KEY,
+                name     TEXT NOT NULL,
+                email    TEXT NOT NULL UNIQUE,
+                password TEXT NOT NULL,
+                role     TEXT NOT NULL DEFAULT 'Counsellor'
+            );
+            CREATE TABLE IF NOT EXISTS applications (
+                app_id           TEXT PRIMARY KEY,
+                student_name     TEXT,
+                student_email    TEXT,
+                student_phone    TEXT,
+                schools          TEXT,
+                counsellor_name  TEXT,
+                counsellor_email TEXT,
+                counsellor_phone TEXT,
+                notes            TEXT,
+                documents        TEXT,
+                status           TEXT DEFAULT 'Not Checked',
+                assigned_officer TEXT,
+                submitted_at     TEXT,
+                last_updated     TEXT,
+                officer_notes    TEXT
+            );
+            CREATE TABLE IF NOT EXISTS notifications (
+                id        TEXT PRIMARY KEY,
+                recipient TEXT,
+                sender    TEXT,
+                type      TEXT,
+                message   TEXT,
+                app_id    TEXT,
+                time      TEXT,
+                read      BOOLEAN DEFAULT FALSE
+            );
+            CREATE TABLE IF NOT EXISTS state (
+                key   TEXT PRIMARY KEY,
+                value TEXT
+            );
+        """)
 
 def load_universities():
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "universities.json")
@@ -18,126 +80,196 @@ def hash_pw(pw): return hashlib.sha256(pw.encode()).hexdigest()
 
 # ── Users ──────────────────────────────────────────────────────────────────────
 def get_all_users():
-    return get_sb().table("users").select("*").execute().data or []
+    with _db() as (conn, cur):
+        cur.execute("SELECT * FROM users ORDER BY name")
+        return [dict(r) for r in cur.fetchall()]
 
 def register_user(name, email, password, role):
-    sb = get_sb()
-    if sb.table("users").select("email").eq("email", email.lower()).execute().data:
-        return False, "Email already registered."
-    sb.table("users").insert({"name":name,"email":email.lower(),"password":hash_pw(password),"role":role}).execute()
+    with _db() as (conn, cur):
+        cur.execute("SELECT email FROM users WHERE email = %s", (email.lower(),))
+        if cur.fetchone():
+            return False, "Email already registered."
+        cur.execute(
+            "INSERT INTO users (name, email, password, role) VALUES (%s, %s, %s, %s)",
+            (name, email.lower(), hash_pw(password), role)
+        )
     return True, "Account created!"
 
 def login_user(email, password):
-    res = get_sb().table("users").select("*").eq("email", email.lower()).execute()
-    if res.data:
-        u = res.data[0]
-        if u["password"] == hash_pw(password): return True, u
+    with _db() as (conn, cur):
+        cur.execute("SELECT * FROM users WHERE email = %s", (email.lower(),))
+        u = cur.fetchone()
+        if u and u["password"] == hash_pw(password):
+            return True, dict(u)
     return False, None
 
 def update_user_role(email, role):
-    get_sb().table("users").update({"role":role}).eq("email",email).execute()
+    with _db() as (conn, cur):
+        cur.execute("UPDATE users SET role = %s WHERE email = %s", (role, email))
 
 def reset_user_password(email, new_password):
-    get_sb().table("users").update({"password":hash_pw(new_password)}).eq("email",email).execute()
+    with _db() as (conn, cur):
+        cur.execute("UPDATE users SET password = %s WHERE email = %s",
+                    (hash_pw(new_password), email))
 
 def delete_user(email):
-    get_sb().table("users").delete().eq("email",email).execute()
+    with _db() as (conn, cur):
+        cur.execute("DELETE FROM users WHERE email = %s", (email,))
 
 def get_officers():
-    res = get_sb().table("users").select("name").eq("role","Application Officer").execute()
-    return [r["name"] for r in (res.data or [])]
+    with _db() as (conn, cur):
+        cur.execute("SELECT name FROM users WHERE role = 'Application Officer' ORDER BY name")
+        return [r["name"] for r in cur.fetchall()]
 
 def get_counsellor_phone(email):
-    res = get_sb().table("applications").select("counsellor_phone") \
-        .eq("counsellor_email", email).order("submitted_at", desc=True).limit(1).execute()
-    return res.data[0]["counsellor_phone"] if res.data else ""
+    with _db() as (conn, cur):
+        cur.execute(
+            "SELECT counsellor_phone FROM applications "
+            "WHERE counsellor_email = %s ORDER BY submitted_at DESC LIMIT 1",
+            (email,)
+        )
+        row = cur.fetchone()
+        return row["counsellor_phone"] if row else ""
 
 # ── Round-robin ────────────────────────────────────────────────────────────────
 def get_next_officer():
     officers = get_officers()
     if not officers: return "Unassigned"
-    sb  = get_sb()
-    res = sb.table("state").select("*").eq("key","next_officer_index").execute()
-    idx = int(res.data[0]["value"]) if res.data else 0
-    officer  = officers[idx % len(officers)]
-    new_idx  = (idx+1) % len(officers)
-    if res.data: sb.table("state").update({"value":str(new_idx)}).eq("key","next_officer_index").execute()
-    else:        sb.table("state").insert({"key":"next_officer_index","value":str(new_idx)}).execute()
+    with _db() as (conn, cur):
+        cur.execute("SELECT value FROM state WHERE key = 'next_officer_index'")
+        row = cur.fetchone()
+        idx = int(row["value"]) if row else 0
+        officer = officers[idx % len(officers)]
+        new_idx = (idx + 1) % len(officers)
+        if row:
+            cur.execute("UPDATE state SET value = %s WHERE key = 'next_officer_index'",
+                        (str(new_idx),))
+        else:
+            cur.execute("INSERT INTO state (key, value) VALUES ('next_officer_index', %s)",
+                        (str(new_idx),))
     return officer
 
 # ── Applications ───────────────────────────────────────────────────────────────
 def load_applications(counsellor_email=None, officer_name=None):
-    sb = get_sb()
-    q  = sb.table("applications").select("*").order("submitted_at", desc=True)
-    if counsellor_email: q = q.eq("counsellor_email", counsellor_email)
-    if officer_name:     q = q.eq("assigned_officer", officer_name)
-    return q.execute().data or []
+    with _db() as (conn, cur):
+        sql    = "SELECT * FROM applications"
+        params = []
+        where  = []
+        if counsellor_email:
+            where.append("counsellor_email = %s")
+            params.append(counsellor_email)
+        if officer_name:
+            where.append("assigned_officer = %s")
+            params.append(officer_name)
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY submitted_at DESC"
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
 
 def get_application(app_id):
-    res = get_sb().table("applications").select("*").eq("app_id",app_id).execute()
-    return res.data[0] if res.data else None
+    with _db() as (conn, cur):
+        cur.execute("SELECT * FROM applications WHERE app_id = %s", (app_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
 
 def save_application(data):
-    get_sb().table("applications").insert(data).execute()
+    with _db() as (conn, cur):
+        cols   = list(data.keys())
+        values = [data[c] for c in cols]
+        sql = "INSERT INTO applications ({}) VALUES ({})".format(
+            ", ".join(cols),
+            ", ".join(["%s"] * len(cols))
+        )
+        cur.execute(sql, values)
 
 def edit_application(app_id, updated):
     updated["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-    get_sb().table("applications").update(updated).eq("app_id",app_id).execute()
+    with _db() as (conn, cur):
+        sets   = ", ".join(f"{k} = %s" for k in updated)
+        values = list(updated.values()) + [app_id]
+        cur.execute(f"UPDATE applications SET {sets} WHERE app_id = %s", values)
 
 def update_status(app_id, status, notes=""):
-    get_sb().table("applications").update({
-        "status":status, "officer_notes":notes,
-        "last_updated":datetime.now().strftime("%Y-%m-%d %H:%M")
-    }).eq("app_id",app_id).execute()
+    with _db() as (conn, cur):
+        cur.execute(
+            "UPDATE applications SET status = %s, officer_notes = %s, last_updated = %s "
+            "WHERE app_id = %s",
+            (status, notes, datetime.now().strftime("%Y-%m-%d %H:%M"), app_id)
+        )
 
 def reassign(app_id, officer):
-    get_sb().table("applications").update({
-        "assigned_officer":officer,
-        "last_updated":datetime.now().strftime("%Y-%m-%d %H:%M")
-    }).eq("app_id",app_id).execute()
+    with _db() as (conn, cur):
+        cur.execute(
+            "UPDATE applications SET assigned_officer = %s, last_updated = %s "
+            "WHERE app_id = %s",
+            (officer, datetime.now().strftime("%Y-%m-%d %H:%M"), app_id)
+        )
 
-# ── Files ──────────────────────────────────────────────────────────────────────
+# ── Files (stubbed — Postgres does not handle binary file storage) ─────────────
 def upload_file(app_id, filename, data, content_type):
-    path = f"{app_id}/{filename}"
-    get_sb().storage.from_("documents").upload(path, data,
-        {"content-type":content_type,"x-upsert":"true"})
+    """File storage is not available with Postgres. Returns filename unchanged."""
     return filename
 
 def get_file_url(app_id, filename):
-    res = get_sb().storage.from_("documents").create_signed_url(f"{app_id}/{filename}", 3600)
-    return res.get("signedURL") or res.get("signedUrl","")
+    """File storage is not available with Postgres. Returns empty string."""
+    return ""
 
 # ── Notifications ──────────────────────────────────────────────────────────────
 def load_notifications(recipient=None):
-    sb = get_sb()
-    if recipient:
-        res = sb.table("notifications").select("*") \
-            .or_(f"recipient.eq.{recipient},recipient.eq.ALL_OFFICERS") \
-            .order("time", desc=True).execute()
-    else:
-        res = sb.table("notifications").select("*").order("time", desc=True).execute()
-    return res.data or []
+    with _db() as (conn, cur):
+        if recipient:
+            cur.execute(
+                "SELECT * FROM notifications "
+                "WHERE recipient = %s OR recipient = 'ALL_OFFICERS' "
+                "ORDER BY time DESC",
+                (recipient,)
+            )
+        else:
+            cur.execute("SELECT * FROM notifications ORDER BY time DESC")
+        return [dict(r) for r in cur.fetchall()]
 
 def add_notification(notif):
-    get_sb().table("notifications").insert(notif).execute()
+    with _db() as (conn, cur):
+        cols   = list(notif.keys())
+        values = [notif[c] for c in cols]
+        sql = "INSERT INTO notifications ({}) VALUES ({})".format(
+            ", ".join(cols),
+            ", ".join(["%s"] * len(cols))
+        )
+        cur.execute(sql, values)
 
 def mark_read(recipient):
-    sb = get_sb()
-    sb.table("notifications").update({"read":True}).eq("recipient",recipient).execute()
+    with _db() as (conn, cur):
+        cur.execute(
+            "UPDATE notifications SET read = TRUE WHERE recipient = %s",
+            (recipient,)
+        )
 
 def mark_officer_read(officer_name):
-    sb = get_sb()
-    sb.table("notifications").update({"read":True}).eq("recipient","ALL_OFFICERS").execute()
-    sb.table("notifications").update({"read":True}).eq("recipient",officer_name).execute()
+    with _db() as (conn, cur):
+        cur.execute(
+            "UPDATE notifications SET read = TRUE "
+            "WHERE recipient = 'ALL_OFFICERS' OR recipient = %s",
+            (officer_name,)
+        )
 
 def unread_count(recipient, is_officer=False):
-    sb = get_sb()
-    if is_officer:
-        r1 = sb.table("notifications").select("id",count="exact").eq("recipient","ALL_OFFICERS").eq("read",False).execute()
-        r2 = sb.table("notifications").select("id",count="exact").eq("recipient",recipient).eq("read",False).execute()
-        return (r1.count or 0)+(r2.count or 0)
-    res = sb.table("notifications").select("id",count="exact").eq("recipient",recipient).eq("read",False).execute()
-    return res.count or 0
+    with _db() as (conn, cur):
+        if is_officer:
+            cur.execute(
+                "SELECT COUNT(*) AS cnt FROM notifications "
+                "WHERE (recipient = 'ALL_OFFICERS' OR recipient = %s) AND read = FALSE",
+                (recipient,)
+            )
+        else:
+            cur.execute(
+                "SELECT COUNT(*) AS cnt FROM notifications "
+                "WHERE recipient = %s AND read = FALSE",
+                (recipient,)
+            )
+        row = cur.fetchone()
+        return int(row["cnt"]) if row else 0
 
 # ── Excel export ───────────────────────────────────────────────────────────────
 def export_excel(rows):
