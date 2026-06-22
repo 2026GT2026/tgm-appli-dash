@@ -23,7 +23,7 @@
       <span style="font-size:0.75rem;color:var(--grey-400);">Auto-filled from your account</span>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Your Full Name</label><input type="text" name="counsellor_name" class="form-control" value="{{ current_user.name }}" readonly></div>
+      <div class="form-group"><label class="form-label">Your Full Name</label><input type="text" name="counsellor_name" class="form-control" value="{{ current_user.get('name','') }}" readonly></div>
       <div class="form-group"><label class="form-label">Your Email</label><input type="email" name="counsellor_email" class="form-control" value="{{ current_user.get('email','') }}" readonly></div>
     </div>
     <div class="form-row">

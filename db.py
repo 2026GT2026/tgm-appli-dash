@@ -70,6 +70,21 @@ def init_db():
             );
         """)
 
+_ALLOWED_APP_COLS = {
+    "app_id", "student_name", "student_email", "student_phone", "schools",
+    "counsellor_name", "counsellor_email", "counsellor_phone", "notes",
+    "documents", "status", "assigned_officer", "submitted_at", "last_updated",
+    "officer_notes",
+}
+_ALLOWED_NOTIF_COLS = {
+    "id", "recipient", "sender", "type", "message", "app_id", "time", "read",
+}
+
+def _validate_cols(cols, allowed):
+    bad = set(cols) - allowed
+    if bad:
+        raise ValueError(f"Disallowed column name(s): {bad}")
+
 def load_universities():
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "universities.json")
     if os.path.exists(path):
@@ -174,6 +189,7 @@ def get_application(app_id):
         return dict(row) if row else None
 
 def save_application(data):
+    _validate_cols(data.keys(), _ALLOWED_APP_COLS)
     with _db() as (conn, cur):
         cols   = list(data.keys())
         values = [data[c] for c in cols]
@@ -185,6 +201,7 @@ def save_application(data):
 
 def edit_application(app_id, updated):
     updated["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+    _validate_cols(updated.keys(), _ALLOWED_APP_COLS)
     with _db() as (conn, cur):
         sets   = ", ".join(f"{k} = %s" for k in updated)
         values = list(updated.values()) + [app_id]
@@ -230,6 +247,7 @@ def load_notifications(recipient=None):
         return [dict(r) for r in cur.fetchall()]
 
 def add_notification(notif):
+    _validate_cols(notif.keys(), _ALLOWED_NOTIF_COLS)
     with _db() as (conn, cur):
         cols   = list(notif.keys())
         values = [notif[c] for c in cols]
@@ -290,5 +308,6 @@ def parse_schools(raw):
     try:
         d = json.loads(raw)
         if isinstance(d, list): return d
-    except: pass
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
     return []

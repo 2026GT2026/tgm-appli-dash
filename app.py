@@ -184,7 +184,7 @@ def submit():
         if not sn or not ce or not cp or not schools:
             flash("Please fill in all required fields and at least one school.", "error")
             return render_template("submit.html", universities=UNIVERSITIES, months=MONTHS,
-                                   form=request.form, num_schools=num_schools,
+                                   form=request.form.to_dict(), num_schools=num_schools,
                                    counsellor_phone=cp)
         app_id  = str(uuid.uuid4())[:8].upper()
         officer = db.get_next_officer()
@@ -430,8 +430,8 @@ def export_query():
 # ADMIN — ASSIGNMENTS & USER MANAGEMENT
 # ══════════════════════════════════════════════════════════════════════════════
 @app.route("/assignments")
-@admin_required
 @login_required
+@admin_required
 def assignments():
     all_apps = db.load_applications()
     officers = db.get_officers()
@@ -446,15 +446,15 @@ def assignments():
                            workload=workload, parse_schools=db.parse_schools, clean=db.clean)
 
 @app.route("/users")
-@admin_required
 @login_required
+@admin_required
 def user_management():
     users = db.get_all_users()
     return render_template("user_management.html", users=users)
 
 @app.route("/users/update-role", methods=["POST"])
-@admin_required
 @login_required
+@admin_required
 def update_role():
     email   = request.form.get("email")
     role    = request.form.get("role")
@@ -471,8 +471,8 @@ def update_role():
     return redirect(url_for("user_management"))
 
 @app.route("/users/delete", methods=["POST"])
-@admin_required
 @login_required
+@admin_required
 def delete_user():
     email = request.form.get("email")
     if email == session["user"]["email"]:
@@ -483,8 +483,8 @@ def delete_user():
     return redirect(url_for("user_management"))
 
 @app.route("/users/add", methods=["POST"])
-@admin_required
 @login_required
+@admin_required
 def add_user():
     name  = request.form.get("name","").strip()
     email = request.form.get("email","").strip()
