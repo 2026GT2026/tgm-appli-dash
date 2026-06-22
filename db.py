@@ -1,14 +1,18 @@
 import os, json, hashlib
 from datetime import datetime
-import psycopg2
-import psycopg2.extras
+import pg8000.dbapi
+from urllib.parse import urlparse
 
 def _conn():
     url = os.environ["DATABASE_URL"]
-    # Railway uses postgres:// but psycopg2 prefers postgresql://
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
-    return psycopg2.connect(url)
+    p = urlparse(url)
+    return pg8000.dbapi.connect(
+        host=p.hostname,
+        port=p.port or 5432,
+        database=p.path.lstrip('/'),
+        user=p.username,
+        password=p.password,
+    )
 
 def _rows(cur):
     cols = [d[0] for d in cur.description]
@@ -225,7 +229,7 @@ def upload_file(app_id, filename, data, content_type):
             cur.execute(
                 "INSERT INTO files (app_id,filename,data,content_type) VALUES (%s,%s,%s,%s) "
                 "ON CONFLICT (app_id,filename) DO UPDATE SET data=EXCLUDED.data, content_type=EXCLUDED.content_type",
-                (app_id, filename, psycopg2.Binary(data), content_type)
+                (app_id, filename, data, content_type)
             )
         conn.commit()
     return filename
