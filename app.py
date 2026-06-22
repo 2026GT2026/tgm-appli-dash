@@ -9,11 +9,13 @@ import io
 load_dotenv()
 import db
 
-# Ensure all Postgres tables exist before the first request is served.
-db.init_db()
-
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "tgm-apphub-secret-2026")
+
+try:
+    db.init_db()
+except Exception as _e:
+    print(f"DB init warning: {_e}")
 
 UNIVERSITIES = db.load_universities()
 STATUSES     = ["Not Checked", "In Progress", "Submitted"]
@@ -184,7 +186,7 @@ def submit():
         if not sn or not ce or not cp or not schools:
             flash("Please fill in all required fields and at least one school.", "error")
             return render_template("submit.html", universities=UNIVERSITIES, months=MONTHS,
-                                   form=request.form.to_dict(), num_schools=num_schools,
+                                   form=request.form, num_schools=num_schools,
                                    counsellor_phone=cp)
         app_id  = str(uuid.uuid4())[:8].upper()
         officer = db.get_next_officer()
@@ -430,8 +432,8 @@ def export_query():
 # ADMIN — ASSIGNMENTS & USER MANAGEMENT
 # ══════════════════════════════════════════════════════════════════════════════
 @app.route("/assignments")
-@login_required
 @admin_required
+@login_required
 def assignments():
     all_apps = db.load_applications()
     officers = db.get_officers()
@@ -446,15 +448,15 @@ def assignments():
                            workload=workload, parse_schools=db.parse_schools, clean=db.clean)
 
 @app.route("/users")
-@login_required
 @admin_required
+@login_required
 def user_management():
     users = db.get_all_users()
     return render_template("user_management.html", users=users)
 
 @app.route("/users/update-role", methods=["POST"])
-@login_required
 @admin_required
+@login_required
 def update_role():
     email   = request.form.get("email")
     role    = request.form.get("role")
@@ -471,8 +473,8 @@ def update_role():
     return redirect(url_for("user_management"))
 
 @app.route("/users/delete", methods=["POST"])
-@login_required
 @admin_required
+@login_required
 def delete_user():
     email = request.form.get("email")
     if email == session["user"]["email"]:
@@ -483,8 +485,8 @@ def delete_user():
     return redirect(url_for("user_management"))
 
 @app.route("/users/add", methods=["POST"])
-@login_required
 @admin_required
+@login_required
 def add_user():
     name  = request.form.get("name","").strip()
     email = request.form.get("email","").strip()
@@ -496,6 +498,17 @@ def add_user():
     else:
         flash("Please fill in all fields.", "error")
     return redirect(url_for("user_management"))
+
+# ── File serving ─────────────────────────────────────────────────────────────
+@app.route("/files/<app_id>/<filename>")
+@login_required
+def serve_file(app_id, filename):
+    row = db.get_file(app_id, filename)
+    if not row:
+        abort(404)
+    data, content_type = row[0], row[1]
+    return send_file(io.BytesIO(bytes(data)), mimetype=content_type,
+                     download_name=filename, as_attachment=False)
 
 # ── API for universities autocomplete ─────────────────────────────────────────
 @app.route("/api/universities")
